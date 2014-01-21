@@ -1,0 +1,76 @@
+@import 'vendor/normalize.css';
+
+.newrev {
+    display: block;
+    font-weight: bold;
+}
+
+.logsz {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.node h2 {
+  width: 120px;
+  display: inline;
+  margin-right: 80px;
+}
+
+.node {
+    display: inline-block;
+    width: 390px;
+    padding: 5px;
+    border-radius: 5px;
+}
+
+.targsrc {
+    background: linear-gradient(to right, #60769f 0%,#6c9f60 100%);
+}
+
+.srctarg {
+   background: linear-gradient(to left, #60769f 0%,#6c9f60 100%);
+}
+
+td {
+    padding-left: 10px;
+}
+
+
+.controls {
+    width: 100%;
+    text-align: center;
+    margin: 0 auto;
+    position: fixed;
+    bottom: 10px;
+}
+
+.nodepane {
+    position: relative;
+    width: 1200px;
+    margin: 0 auto;
+}
+
+.master, .replica {
+    background: #6c9f60;
+}
+.target {
+    background: #60769f;
+}
+
+.promote {
+  background: #ffcece;
+}
+
+
+.headrow {
+  font-weight: bold;
+}
+
+ul {
+  list-style-type: none;
+}
+
+.keyname, .valc, .revnum {
+
+}

@@ -1,0 +1,201 @@
+(ns xdsim.core
+  (:require [om.core :as om :include-macros true]
+            [om.dom :as dom :include-macros true]
+            [clojure.string :as string]
+            [sablono.core :as html :refer [html] :include-macros true]))
+
+(enable-console-print!)
+
+(def empty-node
+  {:update-seq 0
+   :editable false
+   :name "node"
+   :log []
+   :current {}
+   :new-rev 0})
+
+(defn update-current [current-map item]
+  (let [itemkey (:key item)]
+    (assoc current-map itemkey item)))
+
+(defn setm-item [node item]
+  (let [iseq (inc (:update-seq node))
+        item (assoc item
+                    :seq iseq)]
+    (-> node
+        (assoc :update-seq iseq)
+        (update-in [:new-rev] max (if (:deleted item) (:rev item) 0))
+        (update-in [:log] conj item)
+        (update-in [:current] update-current item))))
+
+(defn set-item [node item]
+  (let [oldrev (-> node :current (get (:key item)) :rev)
+        rev (if oldrev (inc oldrev) (:new-rev node))]
+    (setm-item node (assoc item
+                           :rev rev
+                           :cas (rand-int 0xFFFFFFFF)))))
+
+(defn create-counter [node k]
+  (let [item {:value 0
+              :key k
+              :seq (inc (:update-seq node))}]
+    (set-item node item)))
+
+(defn modify-item [node k f & args]
+  (let [prev-item (get (:current node) k)
+        item (-> prev-item
+                 (assoc :value (apply f (:value prev-item) args)))]
+    (set-item node item)))
+
+(defn incr-counter [node k] (modify-item node k inc))
+
+(defn delete-counter [node k]
+  (let [prev-item (get (:current node) k)
+        item (-> prev-item
+                 (assoc :deleted true)
+                 (assoc :value "(deleted)"))]
+    (set-item node item)))
+
+(defn node-current-list [node]
+  (filter (fn [item] (and (= (:seq item)
+                             (:seq (-> node :current (get (:key item)))))))
+          (:log node)))
+
+(defn without-deletes [items]
+  (filter (complement :deleted) items))
+
+(defn node-receive-reset-log [node remote-node]
+  (reduce (fn [node item]
+            (setm-item node item))
+          (assoc node :log [] :current {} :update-seq 0 :new-rev 0)
+          (:log remote-node)))
+
+(defn node-xdc-receive [node remote-node]
+  (reduce (fn [node remote-item]
+            (let [local-item (get (:current node) (:key remote-item))
+                  local-rev (:rev local-item 0)
+                  remote-rev (:rev remote-item)]
+              (if (or (< local-rev remote-rev)
+                      (and (= local-rev remote-rev)
+                           (< (:cas local-item) (:cas remote-item))))
+                ;; if remote rev is higher, or if equal cas is higher, do update
+                (setm-item node remote-item)
+                ;; otherwise leave things the same
+                node)))
+          node (:log remote-node)))
+
+(defn fixup-current [node]
+  (assoc node :current (reduce update-current {} (:log node))))
+
+(defn node-compact [node]
+  (-> node
+      (assoc :log (node-current-list node))
+      fixup-current))
+
+(defn node-purge [node]
+  (-> node
+      (assoc :log (without-deletes (node-current-list node)))
+      fixup-current))
+
+(def app-state (atom {:source-master
+                      (assoc empty-node
+                             :name "Source (Master)"
+                             :class "master"
+                             :editable true)
+                      :source-replica (assoc empty-node
+                                             :class "replica"
+                                             :name "Source (Replica)")
+                      :target (assoc empty-node
+                                     :class "target"
+                                     :editable true
+                                     :name "Target")}))
+
+(defn node [node-data owner]
+  (html
+    [:div {:class (str "node " (:class node-data))}
+     [:h2 (:name node-data)]
+     [:span {:class "newrev"} "New Item Rev: "(:new-rev node-data)]
+     [:span {:class "logsz"} "Size of Log: " (count (:log node-data))]
+     [:button {:on-click #(om/update! node-data node-compact)}
+      "Compact"]
+     [:button {:on-click #(om/update! node-data node-purge)}
+      "Purge Tombstones"]
+     (when (pos? (count (:current node-data)))
+       [:table
+        [:thead {:class "headrow"}
+         [:tr
+          [:th {:class "keyname"} "Key"]
+          [:th {:class "valc"} "Value"]
+          [:th {:class "revnum"} "Rev#"]]]
+        [:tbody
+         (for [{k :key v :value rev :rev} (->> node-data node-current-list without-deletes (sort-by :key))]
+           [:tr
+            [:td {:class "keyname"} (str k)]
+            [:td {:class "valc"} (str v)]
+            [:td {:class "revnum"} (str rev)]
+            (if (:editable node-data)
+              [:td
+               [:button {:on-click #(om/update! node-data incr-counter k)} "+"]
+               [:button {:on-click #(om/update! node-data modify-item k (constantly (rand-int 0xFFFF)))} "R"]
+               [:button {:on-click #(om/update! node-data delete-counter k)} "X"]])])]])]))
+
+(def ENTER_KEY 13)
+
+(defn do-set-counter [e app owner cid]
+  (let [name-field (.. e -target)
+        kname (.. name-field -value trim)]
+    (when (and (not (string/blank? kname))
+               (== (.-which e) ENTER_KEY))
+      (set! (.-value name-field) "")
+      (om/transact! app cid create-counter kname))))
+
+(defn do-xdcr-sim [app sid did]
+  (assoc app did (node-xdc-receive (get app did) (get app sid))))
+
+(defn do-reset-sim [app sid did]
+  (assoc app did (node-receive-reset-log (get app did) (get app sid))))
+
+(defn do-promote-sim [app sid did]
+  (assoc app
+         did (node-receive-reset-log (get app did) (get app sid))
+         sid (node-receive-reset-log (get app sid) empty-node)))
+
+(defn setter-input [app owner cid]
+  (dom/label nil (str "Set 0 on " (:name (get app cid)) ": ")
+             (dom/input
+               #js {:id "set-counter"
+                    :placeholder "Key"
+                    :onKeyDown #(do-set-counter % app owner cid)})))
+
+(om/root
+  app-state
+  (fn [app owner]
+    (dom/div nil
+             (dom/div #js {:className "nodepane"}
+                      (om/build node (:target app))
+                      (om/build node (:source-master app))
+                      (om/build node (:source-replica app)))
+             (dom/div #js {:className "controls"}
+                      (setter-input app owner :target)
+                      (setter-input app owner :source-master)
+                      (html
+                        [:button {:class "targsrc"
+                                  :on-click #(om/update! app do-xdcr-sim
+                                                         :target
+                                                         :source-master)}
+                         "XDCR Target->Source"]
+                        [:button {:class "srctarg"
+                                  :on-click #(om/update! app do-xdcr-sim
+                                                         :source-master
+                                                         :target)}
+                         "XDCR Source->Target"]
+                        [:button {:class "replicate"
+                                  :on-click #(om/update! app do-reset-sim
+                                                         :source-master :source-replica)}
+                         "Replicate Source Master->Replica"]
+                        [:button {:class "promote"
+                                  :on-click #(om/update! app do-promote-sim
+                                                         :source-replica :source-master)}
+                         "Promote Source Replica->Master (Failover)"]))))
+  (. js/document (getElementById "app")))
+
