@@ -18,7 +18,9 @@
   (let [itemkey (:key item)]
     (assoc current-map itemkey item)))
 
-(defn setm-item [node item]
+(defn setm-item
+  "Set item into node, using metadata as is."
+  [node item]
   (let [iseq (inc (:update-seq node))
         item (assoc item
                     :seq iseq)]
@@ -28,49 +30,68 @@
         (update-in [:log] conj item)
         (update-in [:current] update-current item))))
 
-(defn set-item [node item]
+(defn set-item
+  "Set item into node, and assign it a rev and cas"
+  [node item]
   (let [oldrev (-> node :current (get (:key item)) :rev)
         rev (if oldrev (inc oldrev) (:new-rev node))]
     (setm-item node (assoc item
                            :rev rev
                            :cas (rand-int 0xFFFFFFFF)))))
 
-(defn create-counter [node k]
+(defn create-counter
+  "Set item with key k in node to value 0"
+  [node k]
   (let [item {:value 0
               :key k
               :seq (inc (:update-seq node))}]
     (set-item node item)))
 
-(defn modify-item [node k f & args]
+(defn modify-item
+  "Set item with key k in node to result of (f current-value ...) (cas)"
+  [node k f & args]
   (let [prev-item (get (:current node) k)
         item (-> prev-item
                  (assoc :value (apply f (:value prev-item) args)))]
     (set-item node item)))
 
-(defn incr-counter [node k] (modify-item node k inc))
+(defn incr-counter
+  "Increment a counter item in node with key k"
+  [node k]
+  (modify-item node k inc))
 
-(defn delete-counter [node k]
+(defn delete-item
+  "Delete item with key k from node"
+  [node k]
   (let [prev-item (get (:current node) k)
         item (-> prev-item
                  (assoc :deleted true)
                  (assoc :value "(deleted)"))]
     (set-item node item)))
 
-(defn node-current-list [node]
+(defn node-current-list
+  "Get list of current items in node (no obsolete values) in the order they were added"
+  [node]
   (filter (fn [item] (and (= (:seq item)
                              (:seq (-> node :current (get (:key item)))))))
           (:log node)))
 
-(defn without-deletes [items]
-  (filter (complement :deleted) items))
+(defn without-deletes
+  "Remove deleted items from a list of items"
+  [items]
+  (remove :deleted items))
 
-(defn node-receive-reset-log [node remote-node]
+(defn node-receive-reset-log
+  "Reset node and restore from the log of remote-node"
+  [node remote-node]
   (reduce (fn [node item]
             (setm-item node item))
           (assoc node :log [] :current {} :update-seq 0 :new-rev 0)
           (:log remote-node)))
 
-(defn node-xdc-receive [node remote-node]
+(defn node-xdc-receive
+  "Use XDCR rules to apply remote-node's log to node"
+  [node remote-node]
   (reduce (fn [node remote-item]
             (let [local-item (get (:current node) (:key remote-item))
                   local-rev (:rev local-item 0)
@@ -84,15 +105,21 @@
                 node)))
           node (:log remote-node)))
 
-(defn fixup-current [node]
+(defn fixup-current
+  "Fix :current map in node to reflect log"
+  [node]
   (assoc node :current (reduce update-current {} (:log node))))
 
-(defn node-compact [node]
+(defn node-compact
+  "Remove obsoleted entries from node's log"
+  [node]
   (-> node
       (assoc :log (node-current-list node))
       fixup-current))
 
-(defn node-purge [node]
+(defn node-purge
+  "Compact node's log and also remove deleted items (tombstones) from log."
+  [node]
   (-> node
       (assoc :log (without-deletes (node-current-list node)))
       fixup-current))
@@ -110,7 +137,9 @@
                                      :editable true
                                      :name "Target")}))
 
-(defn node [node-data owner]
+(defn node
+  "Render a node"
+  [node-data owner]
   (html
     [:div {:class (str "node " (:class node-data))}
      [:h2 (:name node-data)]
@@ -137,7 +166,7 @@
               [:td
                [:button {:on-click #(om/update! node-data incr-counter k)} "+"]
                [:button {:on-click #(om/update! node-data modify-item k (constantly (rand-int 0xFFFF)))} "R"]
-               [:button {:on-click #(om/update! node-data delete-counter k)} "X"]])])]])]))
+               [:button {:on-click #(om/update! node-data delete-item k)} "X"]])])]])]))
 
 (def ENTER_KEY 13)
 
