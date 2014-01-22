@@ -145,9 +145,9 @@
      [:h2 (:name node-data)]
      [:span {:class "newrev"} "New Item Rev: "(:new-rev node-data)]
      [:span {:class "logsz"} "Size of Log: " (count (:log node-data))]
-     [:button {:on-click #(om/update! node-data node-compact)}
+     [:button.btn {:on-click #(om/update! node-data node-compact)}
       "Compact"]
-     [:button {:on-click #(om/update! node-data node-purge)}
+     [:button.btn {:on-click #(om/update! node-data node-purge)}
       "Purge Tombstones"]
      (when (pos? (count (:current node-data)))
        [:table
@@ -164,9 +164,9 @@
             [:td {:class "revnum"} (str rev)]
             (if (:editable node-data)
               [:td
-               [:button {:on-click #(om/update! node-data incr-counter k)} "+"]
-               [:button {:on-click #(om/update! node-data modify-item k (constantly (rand-int 0xFFFF)))} "R"]
-               [:button {:on-click #(om/update! node-data delete-item k)} "X"]])])]])]))
+               [:button.btn {:on-click #(om/update! node-data incr-counter k)} "+"]
+               [:button.btn {:on-click #(om/update! node-data modify-item k (constantly (rand-int 0xFFFF)))} "R"]
+               [:button.btn {:on-click #(om/update! node-data delete-item k)} "X"]])])]])]))
 
 (def ENTER_KEY 13)
 
@@ -193,6 +193,7 @@
   (dom/label nil (str "Set 0 on " (:name (get app cid)) ": ")
              (dom/input
                #js {:id "set-counter"
+                    :className "setter"
                     :placeholder "Key"
                     :onKeyDown #(do-set-counter % app owner cid)})))
 
@@ -205,26 +206,38 @@
                       (om/build node (:source-master app))
                       (om/build node (:source-replica app)))
              (dom/div #js {:className "controls"}
-                      (setter-input app owner :target)
-                      (setter-input app owner :source-master)
-                      (html
-                        [:button {:class "targsrc"
-                                  :on-click #(om/update! app do-xdcr-sim
-                                                         :target
-                                                         :source-master)}
-                         "XDCR Target->Source"]
-                        [:button {:class "srctarg"
-                                  :on-click #(om/update! app do-xdcr-sim
-                                                         :source-master
-                                                         :target)}
-                         "XDCR Source->Target"]
-                        [:button {:class "replicate"
-                                  :on-click #(om/update! app do-reset-sim
-                                                         :source-master :source-replica)}
-                         "Replicate Source Master->Replica"]
-                        [:button {:class "promote"
-                                  :on-click #(om/update! app do-promote-sim
-                                                         :source-replica :source-master)}
-                         "Promote Source Replica->Master (Failover)"]))))
+                      (dom/div #js {:className "controlpane"}
+                               (dom/div #js {:className "setters"}
+                                        (setter-input app owner :target)
+                                        (setter-input app owner :source-master))
+                               (html
+                                 [:button.btn {:class "targsrc"
+                                               :on-click #(om/update! app do-xdcr-sim
+                                                                      :target
+                                                                      :source-master)}
+                                  "XDCR Target to Source ->"]
+                                 [:button.btn {:class "srctarg"
+                                               :on-click #(om/update! app do-xdcr-sim
+                                                                      :source-master
+                                                                      :target)}
+                                  "<- XDCR Source to Target"]
+                                 [:button.btn {:class "replicate"
+                                               :on-click #(om/update! app do-reset-sim
+                                                                      :source-master :source-replica)}
+                                  "Replicate Source Master to Replica ->"]
+                                 [:button.btn {:class "promote"
+                                               :on-click #(om/update! app do-promote-sim
+                                                                      :source-replica :source-master)}
+                                  "<- Replace Master with Replica (Failover)"])))))
   (. js/document (getElementById "app")))
 
+;; http://swannodette.github.io/2013/12/31/time-travel/
+;;
+;;
+;;;; Store the history of all app states
+;;(def app-history (atom [@app-state]))
+;;
+;;(add-watch app-state :history
+;;  (fn [_ _ _ n]
+;;    (when-not (= (last @app-history) n)
+;;      (swap! app-history conj n))))

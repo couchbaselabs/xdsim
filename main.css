@@ -1,4 +1,4 @@
-@import 'vendor/normalize.css';
+@import 'vendor/css/bootstrap.css';
 
 .newrev {
     display: block;
@@ -25,25 +25,47 @@
 }
 
 .targsrc {
-    background: linear-gradient(to right, #60769f 0%,#6c9f60 100%);
+  width: 390px;
+  background: linear-gradient(to right, #60769f 90%,#6c9f60 100%);
 }
 
 .srctarg {
-   background: linear-gradient(to left, #60769f 0%,#6c9f60 100%);
+  width: 390px;
+  background: linear-gradient(to left, #60769f 90%,#6c9f60 100%);
 }
 
-td {
-    padding-left: 10px;
-    height: 14px;
+.node tr {
+    line-height: 35px;
+}
+
+.node button {
+    margin-right: 5px;
 }
 
 
 .controls {
-    width: 100%;
-    text-align: center;
-    margin: 0 auto;
     position: fixed;
+    width: 100%;
     bottom: 10px;
+}
+
+.controlpane {
+    position: relative;
+    width: 1200px;
+    margin: 0 auto;
+}
+
+.setter {
+  display: block;
+  width:390px;
+}
+
+.setters {
+  display: block;
+}
+
+.setter input {
+  width: 390px;
 }
 
 .nodepane {
@@ -63,21 +85,11 @@ td {
   background: #ffcece;
 }
 
-button {
-  padding-top: 2px;
-  padding-bottom: 2px;
-  font-size: 10px;
+.replicate {
+  margin-left: 390px;
+  width: 390px;
 }
-
 
 .headrow {
   font-weight: bold;
-}
-
-ul {
-  list-style-type: none;
-}
-
-.keyname, .valc, .revnum {
-
 }
