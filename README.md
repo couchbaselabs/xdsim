@@ -16,11 +16,16 @@ open index.html
 
  1. Add some items and do some updates to source
  1. Replicate source master to replica
- 1. XDCR Source to Target
  1. Do some more updates on source
+ 1. XDCR Source to Target
  1. Simulate a failover (replace master w/ replica)
+ 1. Update an item on the source that was updated in step #3
+ 1. XDCR Source to Target
+ 1. XDCR Target to Source
 
-At this point some items on Source will have lower Rev #s than items in Target, even though no writes have been done at Target. Writes to items in this state will be *ignored* by the target cluster until their Rev #s reach their old values.
+After the failover some items on Source will have lower Rev #s than items in Target, even though no writes have been done at Target. Writes to items in this state will be *ignored* by the target cluster until their Rev #s reach their old values.
+
+In this case, updates done *after* the failover, even though no writes have been done to the target at *any* point, can be lost.
 
 #### tombstone purging resets max-deleted-rev for fresh replicas
 
