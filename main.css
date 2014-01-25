@@ -58,17 +58,8 @@
     margin: 0 auto;
 }
 
-.setter {
-  display: block;
-  width:390px;
-}
-
 .setters {
   display: block;
-}
-
-.setter input {
-  width: 390px;
 }
 
 .nodepane {
@@ -85,6 +76,7 @@
 }
 
 .promote {
+  width: 390px;
   background: #ffcece;
 }
 
@@ -95,4 +87,13 @@
 
 .headrow {
   font-weight: bold;
+}
+
+.setter {
+  display: inline-block;
+  width:390px;
+}
+
+.set-field {
+  width: 80px;
 }

@@ -39,10 +39,10 @@
                            :rev rev
                            :cas (rand-int 0xFFFFFFFF)))))
 
-(defn create-counter
-  "Set item with key k in node to value 0"
-  [node k]
-  (let [item {:value 0
+(defn set-kv
+  "Set item with key k in node to value v"
+  [node k v]
+  (let [item {:value v
               :key k
               :seq (inc (:update-seq node))}]
     (set-item node item)))
@@ -58,7 +58,9 @@
 (defn incr-counter
   "Increment a counter item in node with key k"
   [node k]
-  (modify-item node k inc))
+  (modify-item node k (fn [curr]
+                        (str (let [p (js/parseInt curr 10)]
+                               (if (= p js/NaN) 0 (inc p)))))))
 
 (defn delete-item
   "Delete item with key k from node"
@@ -126,16 +128,16 @@
 
 (def app-state (atom {:source-master
                       (assoc empty-node
-                             :name "Source (Master)"
+                             :name "West DC (Master)"
                              :class "master"
                              :editable true)
                       :source-replica (assoc empty-node
                                              :class "replica"
-                                             :name "Source (Replica)")
+                                             :name "West DC (Replica)")
                       :target (assoc empty-node
                                      :class "target"
                                      :editable true
-                                     :name "Target")}))
+                                     :name "East DC")}))
 
 (defn node
   "Render a node"
@@ -170,13 +172,16 @@
 
 (def ENTER_KEY 13)
 
-(defn do-set-counter [e app owner cid]
-  (let [name-field (.. e -target)
+(defn do-set-key [e app owner cid]
+  (let [name-field (om/get-node owner "setkey")
+        val-field (om/get-node owner "setval")
+        valstr (.. val-field -value trim)
+        valstr (if (= valstr "") "0" valstr)
         kname (.. name-field -value trim)]
     (when (and (not (string/blank? kname))
                (== (.-which e) ENTER_KEY))
-      (set! (.-value name-field) "")
-      (om/transact! app cid create-counter kname))))
+      (set! (.-value (.-which e)) "")
+      (om/transact! app cid set-kv kname valstr))))
 
 (defn do-xdcr-sim [app sid did]
   (assoc app did (node-xdc-receive (get app did) (get app sid))))
@@ -189,47 +194,60 @@
          did (node-receive-reset-log (get app did) (get app sid))
          sid (node-receive-reset-log (get app sid) empty-node)))
 
-(defn setter-input [app owner cid]
-  (dom/label nil (str "Set 0 on " (:name (get app cid)) ": ")
-             (dom/input
-               #js {:id "set-counter"
-                    :className "setter"
-                    :placeholder "Key"
-                    :onKeyDown #(do-set-counter % app owner cid)})))
+(defn setter-input [app owner]
+  (reify
+    om/IRenderState
+    (render-state [_ {:keys [node]}]
+      (dom/div #js {:className "setter"}
+               "Set "
+               (dom/input
+                 #js {:className "set-field"
+                      :ref "setkey"
+                      :placeholder "Key"
+                      :onKeyDown #(do-set-key % app owner node)})
+               (str " on " (:name (get app node)) " to ")
+               (dom/input
+                 #js {:className "set-field"
+                      :ref "setval"
+                      :placeholder "0"
+                      :onKeyDown #(do-set-key % app owner node)})))))
 
-(om/root
-  app-state
-  (fn [app owner]
-    (dom/div nil
-             (dom/div #js {:className "nodepane"}
-                      (om/build node (:target app))
-                      (om/build node (:source-master app))
-                      (om/build node (:source-replica app)))
-             (dom/div #js {:className "controls"}
-                      (dom/div #js {:className "controlpane"}
-                               (dom/div #js {:className "setters"}
-                                        (setter-input app owner :target)
-                                        (setter-input app owner :source-master))
-                               (html
-                                 [:button.btn {:class "targsrc"
-                                               :on-click #(om/update! app do-xdcr-sim
-                                                                      :target
-                                                                      :source-master)}
-                                  "XDCR Target to Source ->"]
-                                 [:button.btn {:class "srctarg"
-                                               :on-click #(om/update! app do-xdcr-sim
-                                                                      :source-master
-                                                                      :target)}
-                                  "<- XDCR Source to Target"]
-                                 [:button.btn {:class "replicate"
-                                               :on-click #(om/update! app do-reset-sim
-                                                                      :source-master :source-replica)}
-                                  "Replicate Source Master to Replica ->"]
-                                 [:button.btn {:class "promote"
-                                               :on-click #(om/update! app do-promote-sim
-                                                                      :source-replica :source-master)}
-                                  "<- Replace Master with Replica (Failover)"])))))
-  (. js/document (getElementById "app")))
+(defn xdsim-app
+  [app owner]
+  (reify
+    om/IRenderState
+    (render-state [_ _]
+      (dom/div nil
+               (dom/div #js {:className "nodepane"}
+                        (om/build node (:target app))
+                        (om/build node (:source-master app))
+                        (om/build node (:source-replica app)))
+               (dom/div #js {:className "controls"}
+                        (dom/div #js {:className "controlpane"}
+                                 (dom/div #js {:className "setters"}
+                                          (om/build setter-input app {:init-state {:node :target}})
+                                          (om/build setter-input app {:init-state {:node :source-master}}))
+                                 (html
+                                   [:button.btn {:class "targsrc"
+                                                 :on-click #(om/update! app do-xdcr-sim
+                                                                        :target
+                                                                        :source-master)}
+                                    "XDCR East DC to West DC ->"]
+                                   [:button.btn {:class "srctarg"
+                                                 :on-click #(om/update! app do-xdcr-sim
+                                                                        :source-master
+                                                                        :target)}
+                                    "<- XDCR West DC to East DC"]
+                                   [:button.btn {:class "replicate"
+                                                 :on-click #(om/update! app do-reset-sim
+                                                                        :source-master :source-replica)}
+                                    "Replicate Master to Replica ->"]
+                                   [:button.btn {:class "promote"
+                                                 :on-click #(om/update! app do-promote-sim
+                                                                        :source-replica :source-master)}
+                                    "<- Replace Master with Replica (Failover)"])))))))
+
+(om/root app-state xdsim-app (. js/document (getElementById "app")))
 
 ;; http://swannodette.github.io/2013/12/31/time-travel/
 ;;
