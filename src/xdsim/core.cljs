@@ -74,9 +74,9 @@
 (defn node-current-list
   "Get list of current items in node (no obsolete values) in the order they were added"
   [node]
-  (filter (fn [item] (and (= (:seq item)
-                             (:seq (-> node :current (get (:key item)))))))
-          (:log node)))
+  (vec (filter (fn [item] (and (= (:seq item)
+                                  (:seq (-> node :current (get (:key item)))))))
+               (:log node))))
 
 (defn without-deletes
   "Remove deleted items from a list of items"
